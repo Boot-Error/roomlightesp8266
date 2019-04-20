@@ -7,7 +7,10 @@ import uos, machine
 import gc
 import webrepl
 import network
-import socket
+import usocket as socket
+import struct
+import time
+
 
 webrepl.start()
 gc.collect()
@@ -16,8 +19,10 @@ class RoomLight:
 
     def __init__(self):
         
-        self.state = "off"
+        self.state = "on" # follows master config, i.e physical switch
         self.pin = machine.Pin(2,machine.Pin.OUT)
+
+        self.action() # apply default config on startup
 
     def setState(self, val):
 
@@ -50,6 +55,7 @@ class RoomLight:
         <html>
             <head>
                 <title>Room Light</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
                 <style>
                     .off {
@@ -85,9 +91,40 @@ def do_connect():
             pass
     print('network config:', sta_if.ifconfig())
 
-do_connect()
-pins = [machine.Pin(i, machine.Pin.IN) for i in (0, 2, 4, 5, 12, 13, 14, 15)]
 
+def runNTP(r1):
+    """
+    Get time from the NTP Server
+    Set the light state based on daylight 
+    """
+
+    address = socket.getaddrinfo('pool.ntp.org', 123)[0][-1]
+    data = '\x1b' + 47 * '\0'
+    epoch = 3155587200 + (24 * 3600) - (3600 * 5) - 1800
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(address)
+    s.sendto(data, address)
+
+    data, address = s.recvfrom(1024)
+
+    s.close()
+
+    t = struct.unpack("!12I", data)[10]
+    t -= epoch
+
+    lt = time.localtime(t)
+
+    if 18 < lt[3] < 23 and 0 < lt[3] < 6:
+        r1.setState('on')
+
+    elif 6 < lt[3] < 18:
+        r1.setState('off')
+    
+    print('Time is ', time.localtime(t))
+
+
+do_connect()
 addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
 
 s = socket.socket()
@@ -97,6 +134,10 @@ s.listen(1)
 print('listening on', addr)
 
 rl = RoomLight()
+
+# setup ntp for turning lights based on time of day
+tim = machine.Timer(-1)
+tim.init(period=1000 * 60 * 15, mode=machine.Timer.PERIODIC, callback=lambda t: runNTP(r1))
 
 while True:
 
