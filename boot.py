@@ -11,6 +11,8 @@ import usocket as socket
 import struct
 import time
 
+from config import wifi_cred
+
 
 webrepl.start()
 gc.collect()
@@ -20,7 +22,7 @@ class RoomLight:
     def __init__(self):
         
         self.state = "on" # follows master config, i.e physical switch
-        self.pin = machine.Pin(2,machine.Pin.OUT)
+        self.pin = machine.Pin(2, machine.Pin.OUT)
 
         self.action() # apply default config on startup
 
@@ -69,7 +71,7 @@ class RoomLight:
                 </style>
             </head>""" + """
             <body class="{state}">
-                <div class="container">
+                <div class="container text-center">
                     <h1 class="{state}" style="text-align: center;">The lights are {state} currently</h1>
                     <form action="/turn{otherState}" method="get">
                         <button type="submit" class="btn btn-outline-secondary">Turn {otherState}</button>
@@ -79,14 +81,12 @@ class RoomLight:
         </html>
         """.format(state=self.state, otherState="off" if self.state == "on" else "on")
 
-
-
 def do_connect():
     sta_if = network.WLAN(network.STA_IF)
     if not sta_if.isconnected():
         print('connecting to network...')
         sta_if.active(True)
-        sta_if.connect('rush_b', 'rushrushB')
+        sta_if.connect(*wifi_cred)
         while not sta_if.isconnected():
             pass
     print('network config:', sta_if.ifconfig())
@@ -98,6 +98,7 @@ def runNTP(r1):
     Set the light state based on daylight 
     """
 
+
     address = socket.getaddrinfo('pool.ntp.org', 123)[0][-1]
     data = '\x1b' + 47 * '\0'
     epoch = 3155587200 + (24 * 3600) - (3600 * 5) - 1800
@@ -105,6 +106,8 @@ def runNTP(r1):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(address)
     s.sendto(data, address)
+
+    print("Fetching NTP..")
 
     data, address = s.recvfrom(1024)
 
@@ -114,14 +117,13 @@ def runNTP(r1):
     t -= epoch
 
     lt = time.localtime(t)
+    print('Time is ', time.localtime(t))
 
-    if 18 < lt[3] < 23 and 0 < lt[3] < 6:
+    if 18 <= lt[3] < 23 and 0 <= lt[3] <= 4:
         r1.setState('on')
 
-    elif 6 < lt[3] < 18:
+    elif 5 <= lt[3] <= 17:
         r1.setState('off')
-    
-    print('Time is ', time.localtime(t))
 
 
 do_connect()
@@ -134,10 +136,11 @@ s.listen(1)
 print('listening on', addr)
 
 rl = RoomLight()
+# runNTP(rl)
 
 # setup ntp for turning lights based on time of day
 tim = machine.Timer(-1)
-tim.init(period=1000 * 60 * 15, mode=machine.Timer.PERIODIC, callback=lambda t: runNTP(r1))
+tim.init(period=1000 * 60 * 15, mode=machine.Timer.PERIODIC, callback=lambda t: runNTP(rl))
 
 while True:
 
