@@ -1,6 +1,6 @@
 # roomlightesp8266
 
-My simple IOT setup to control room light using esp8226.
+My simple IOT setup to control room light using esp8266.
 
 # Highlights
 
